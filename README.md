@@ -46,8 +46,6 @@ asyncio.run(main())
 
 - `read()` returns `True` when new values were read, and `False` when the inverter
   cannot be reached. SAJ inverters run on solar power, so this is normal at night.
-- A wrong username or password raises `UnauthorizedException`. A response that is not
-  inverter data raises `UnexpectedResponseException`.
 - `sensors["total_yield"]` looks up a single sensor by name.
 - `sensor.enabled` is `True` for every sensor your inverter actually reports. Sensors
   for channels your inverter does not have, such as a third PV string, stay disabled.
@@ -102,19 +100,6 @@ Older WiFi module firmware only reports the sensors that both interfaces have.
   statistics, such as Home Assistant's Energy dashboard, free of false spikes.
 - A reading that is out of range or clearly wrong is skipped, and the sensor keeps
   its previous value.
-
-## Migrating from pysaj
-
-The API is the same as pysaj. Install `aiosaj` and change your imports:
-
-```python
-# before
-from pysaj import SAJ, Sensors
-# after
-from aiosaj import SAJ, Sensors
-```
-
-See [CHANGELOG.md](CHANGELOG.md) for everything that changed since pysaj 0.0.16.
 
 ## Credits
 
