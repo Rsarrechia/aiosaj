@@ -4,6 +4,12 @@ All notable changes to aiosaj (formerly the maintained pysaj fork) are
 documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-10-19
+
+### Changed
+- README rewritten as a user guide: installation, usage, the sensors each
+  interface exposes and how their values behave. No code changes.
+
 ## [0.2.0] - 2026-10-19
 
 ### Changed
