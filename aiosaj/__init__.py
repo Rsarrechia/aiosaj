@@ -13,7 +13,7 @@ try:
     from importlib.metadata import PackageNotFoundError
     from importlib.metadata import version as _pkg_version
 
-    __version__ = _pkg_version("pysaj")
+    __version__ = _pkg_version("aiosaj")
 except (ImportError, PackageNotFoundError):  # pragma: no cover
     __version__ = "0.0.0"
 
@@ -523,7 +523,7 @@ class Sensors:
             return
 
         if not isinstance(sensor, Sensor):
-            raise TypeError("pysaj.Sensor expected")
+            raise TypeError("aiosaj.Sensor expected")
 
         if sensor.name in self:
             old = self[sensor.name]

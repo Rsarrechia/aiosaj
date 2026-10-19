@@ -1,11 +1,16 @@
 # Changelog
 
-All notable changes to this fork are documented here. This project follows
+All notable changes to aiosaj (formerly the maintained pysaj fork) are
+documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] - 2026-10-19
 
 ### Changed
+- **Renamed to aiosaj.** The package is published on PyPI as `aiosaj` and
+  imported as `aiosaj`; replace `import pysaj` with `import aiosaj`. The new
+  import name lets it be installed alongside the original `pysaj`, which Home
+  Assistant core still requires.
 - Only a record whose run state is `Normal` is trusted. An empty, unparseable
   or unrecognised state now gates the record like a known non-normal state:
   live readings become unknown and counters keep their last value. A record
@@ -19,6 +24,9 @@ All notable changes to this fork are documented here. This project follows
   values (50000 -> 70000 -> 90000) no longer counts as confirmation.
 - `today_yield` and `today_time` can no longer go down within the same day; a
   drop is only accepted once the date has changed.
+
+### Added
+- Linting with ruff in CI.
 
 ## [0.1.3] - 2026-08-18
 

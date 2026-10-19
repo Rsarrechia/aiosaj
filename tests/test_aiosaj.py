@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 import aiohttp
 import pytest
 
-import pysaj
-from pysaj import (
+import aiosaj
+from aiosaj import (
     MAPPER_STATES,
     SAJ,
     WARN_INTERVAL_SECONDS,
@@ -19,7 +19,7 @@ from pysaj import (
 # --- minimal aiohttp mock ---------------------------------------------------
 # aioresponses does not track aiohttp's ClientResponse signature (it breaks on
 # aiohttp >= 3.14, which is what Home Assistant ships), so we mock the small
-# slice of aiohttp that pysaj.read() actually uses. This keeps the suite green
+# slice of aiohttp that aiosaj.read() actually uses. This keeps the suite green
 # against whatever aiohttp is installed. Each route maps a URL to either
 # (body, status) or an Exception instance to raise when the request is made.
 
@@ -57,7 +57,7 @@ class _FakeGet:
 
 
 def install_fake_http(monkeypatch, routes):
-    """Patch aiohttp.ClientSession so pysaj.read() serves from `routes`."""
+    """Patch aiohttp.ClientSession so aiosaj.read() serves from `routes`."""
 
     class _FakeSession:
         def __init__(self, *args, **kwargs):
@@ -72,7 +72,7 @@ def install_fake_http(monkeypatch, routes):
         def get(self, url):
             return _FakeGet(routes[str(url)], self._raise)
 
-    monkeypatch.setattr(pysaj.aiohttp, "ClientSession", _FakeSession)
+    monkeypatch.setattr(aiosaj.aiohttp, "ClientSession", _FakeSession)
 
 
 # A real 35 field record as returned by status.php on a 3 phase inverter with
@@ -353,7 +353,7 @@ class TestSAJ:
         })
 
         assert await saj.read(sensors) is True
-        assert saj.serialnumber == pysaj.UNKNOWN_SERIAL
+        assert saj.serialnumber == aiosaj.UNKNOWN_SERIAL
         assert sensors["current_power"].value == 38.0
 
     @pytest.mark.asyncio

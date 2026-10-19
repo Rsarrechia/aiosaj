@@ -1,10 +1,10 @@
-pysaj.egg-info
+aiosaj.egg-info
 build
 dist
 .vscode
 .idea
 test.py
-pysaj/__pycache__
-pysaj/.vscode
+aiosaj/__pycache__
+aiosaj/.vscode
 /examples
 /tests/__pycache__

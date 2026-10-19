@@ -1,7 +1,35 @@
-# pysaj
+# aiosaj
 
-This library was created to communicate with SAJ solar inverters within Home Assistant.
-It is based on the pysma component written by @kellerza
+Async library to read SAJ solar inverters over their Ethernet (`real_time_data.xml`) and
+WiFi (`status/status.php`) interfaces, written for Home Assistant.
+
+aiosaj continues [fredericvl/pysaj](https://github.com/fredericvl/pysaj), which was based
+on the pysma component written by @kellerza. It is published under a new name and
+imported as `aiosaj`, so it can be installed next to the original `pysaj`.
+
+```
+pip install aiosaj
+```
+
+```python
+import asyncio
+
+from aiosaj import SAJ, Sensors
+
+
+async def main():
+    sensors = Sensors(wifi=True)
+    saj = SAJ("192.168.1.100", wifi=True)
+    if await saj.read(sensors):
+        print(sensors["current_power"].value, sensors["total_yield"].value)
+
+
+asyncio.run(main())
+```
+
+Migrating from `pysaj`: install `aiosaj` and change `import pysaj` / `from pysaj import ...`
+to `aiosaj`. The API is otherwise the same as pysaj 0.1.x; see [CHANGELOG.md](CHANGELOG.md)
+for what differs from upstream 0.0.16.
 
 ## Sensors
 
