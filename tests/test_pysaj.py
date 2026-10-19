@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 from unittest.mock import MagicMock
 from datetime import date, datetime, timedelta, timezone
@@ -310,6 +311,19 @@ class TestSAJ:
         assert result is False
 
     @pytest.mark.asyncio
+    async def test_read_timeout(self, monkeypatch):
+        saj = SAJ("192.168.1.100", wifi=True)
+        sensors = Sensors(wifi=True)
+
+        install_fake_http(monkeypatch, {
+            saj.url_info: ("", 404),
+            saj.url: asyncio.TimeoutError(),
+        })
+
+        result = await saj.read(sensors)
+        assert result is False
+
+    @pytest.mark.asyncio
     async def test_read_unauthorized(self, monkeypatch):
         saj = SAJ("192.168.1.100", wifi=False)
         sensors = Sensors()
@@ -438,13 +452,13 @@ class TestEthernetWireFormat:
         assert sensors["state"].value == "Waiting"
         assert sensors["current_power"].value is None
 
-    def test_unknown_state_code_is_treated_as_running(self):
-        """An unrecognised state must not blank every sensor."""
+    def test_unknown_state_code_is_treated_as_not_running(self):
         _, sensors = self._read(LAN_RECORD.replace("<state>Normal</state>",
                                                    "<state>9</state>"))
 
         assert sensors["state"].value == "Unknown(9)"
-        assert sensors["current_power"].value == 38.0
+        assert sensors["current_power"].value is None
+        assert sensors["total_yield"].value is None
 
     def test_dash_marks_a_channel_the_inverter_lacks(self):
         _, sensors = self._read(LAN_RECORD.replace("<maxPower>43</maxPower>",
@@ -595,6 +609,22 @@ class TestCumulativeGuards:
         assert saj._read_wifi(spike, sensors) is True
         assert sensors["total_yield"].value == 99999.99
 
+    def test_climbing_corrupt_readings_are_not_a_confirmation(self):
+        saj, sensors = self._prime()
+
+        # Each one is a fresh implausible jump, not a repeat of the last.
+        for raw in (5000000, 7000000, 9000000):
+            assert saj._read_wifi(wifi_record({1: raw}), sensors) is True
+        assert sensors["total_yield"].value == 17584.33
+
+    def test_jump_confirmed_by_a_slowly_growing_counter(self):
+        """A real jump keeps counting up a little between confirmations."""
+        saj, sensors = self._prime()
+
+        for raw in (9999000, 9999010, 9999020):
+            assert saj._read_wifi(wifi_record({1: raw}), sensors) is True
+        assert sensors["total_yield"].value == 99990.20
+
     def test_single_resolution_step_is_never_a_jump(self, caplog):
         """A 0.1h step in total_time is normal, not an implausible jump."""
         saj, sensors = self._prime()
@@ -624,6 +654,38 @@ class TestCumulativeGuards:
 
         assert saj._read_wifi(wifi_record({1: 1763433}), sensors) is True
         assert sensors["total_yield"].value == 17634.33
+
+
+class TestDailyGuards:
+    """Daily counters only go down when the day changes."""
+
+    def _prime(self):
+        saj = SAJ("192.168.1.100", wifi=True)
+        sensors = Sensors(wifi=True)
+        assert saj._read_wifi(WIFI_RECORD, sensors) is True
+        return saj, sensors
+
+    def test_drop_within_the_day_is_rejected(self, caplog):
+        saj, sensors = self._prime()
+
+        assert saj._read_wifi(wifi_record({3: 100}), sensors) is True
+        assert sensors["today_yield"].value == 11.65
+        assert "within the same day" in caplog.text
+        # The rest of the record still applies.
+        assert sensors["current_power"].value == 185.0
+
+    def test_reset_on_a_new_day_is_accepted(self):
+        saj, sensors = self._prime()
+        sensors["today_yield"].date = date.today() - timedelta(days=1)
+
+        assert saj._read_wifi(wifi_record({3: 100}), sensors) is True
+        assert sensors["today_yield"].value == 1.0
+
+    def test_growth_within_the_day_is_accepted(self):
+        saj, sensors = self._prime()
+
+        assert saj._read_wifi(wifi_record({3: 1200}), sensors) is True
+        assert sensors["today_yield"].value == 12.0
 
 
 class TestWarningThrottle:
@@ -730,6 +792,14 @@ class TestRunStateGate:
         assert sensors["total_yield"].enabled is True
         assert sensors["bus_voltage"].enabled is True
         assert sensors["total_yield"].value is None
+
+    @pytest.mark.parametrize("state", ["", "x", "9"])
+    def test_unusable_or_unknown_state_is_not_running(self, state):
+        saj, sensors = self._prime()
+
+        assert saj._read_wifi(wifi_record({1: 0, 3: 0, 23: 0, 34: state}), sensors) is True
+        assert sensors["current_power"].value is None
+        assert sensors["total_yield"].value == 17584.33
 
     def test_recovery_after_waking(self):
         saj, sensors = self._prime()

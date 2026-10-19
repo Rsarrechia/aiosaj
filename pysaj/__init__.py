@@ -28,12 +28,6 @@ MAPPER_STATES = {
 
 STATE_NORMAL = "Normal"
 
-# Only these gate the readings. Anything else - including a state code this
-# library has never seen - is treated as running, so an unrecognised value
-# cannot silently blank every sensor.
-NOT_RUNNING_STATES = frozenset(
-    state for state in MAPPER_STATES.values() if state != STATE_NORMAL
-)
 
 # Until the device info page has been read, if it can be read at all.
 UNKNOWN_SERIAL = "XXXXXXXXXXXXXXXXX"
@@ -231,11 +225,15 @@ def _accept_cumulative(sen, new, now):
         sen.pending_count = 0
         return True
 
-    if sen.pending_value is not None and new >= sen.pending_value:
+    # Confirmations have to agree with each other, not merely keep climbing:
+    # 50000 -> 70000 -> 90000 is three corrupt readings, not one real jump.
+    if sen.pending_value is not None and (
+        0 <= round(new - sen.pending_value, sen.precision) <= allowance
+    ):
         sen.pending_count += 1
     else:
-        sen.pending_value = new
         sen.pending_count = 1
+    sen.pending_value = new
 
     if sen.pending_count < CONFIRM_READINGS:
         _warn_throttled(
@@ -266,6 +264,28 @@ def _accept_cumulative(sen, new, now):
     sen.pending_value = None
     sen.pending_count = 0
     return True
+
+
+def _accept_daily(sen, new, today, now):
+    """Decide whether a daily counter may move to `new`.
+
+    A daily counter only resets when the day changes. A drop within the same
+    day is a bad sample, and Home Assistant would book the recovery from it as
+    fresh production.
+    """
+    if sen.value is None or sen.date != today or new >= sen.value:
+        return True
+
+    _warn_throttled(
+        sen,
+        now,
+        "Ignoring %s going backwards (%s -> %s%s) within the same day%s",
+        sen.name,
+        sen.value,
+        new,
+        sen.unit,
+    )
+    return False
 
 
 def _record_is_consistent(holder, staged):
@@ -738,8 +758,12 @@ class SAJ(object):
         now = datetime.now(timezone.utc)
         today = date.today()
 
+        # Only a record that says Normal is trusted. One whose state is empty,
+        # unparseable or a code this library does not know is treated as not
+        # running: counters keep their last value, which is always safe. Only a
+        # record with no state field at all cannot be gated.
+        running = staged.get("state", STATE_NORMAL) == STATE_NORMAL
         state = staged.get("state")
-        running = state is None or state not in NOT_RUNNING_STATES
         if not running:
             # Sunrise and sunset both spend a while here, and read() still
             # succeeds, so the consumer keeps polling at its shortest interval.
@@ -781,6 +805,8 @@ class SAJ(object):
                 continue
 
             if sen.per_total_basis and not _accept_cumulative(sen, value, now):
+                continue
+            if sen.per_day_basis and not _accept_daily(sen, value, today, now):
                 continue
 
             if sen.value != value:

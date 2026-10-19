@@ -3,6 +3,23 @@
 All notable changes to this fork are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- Only a record whose run state is `Normal` is trusted. An empty, unparseable
+  or unrecognised state now gates the record like a known non-normal state:
+  live readings become unknown and counters keep their last value. A record
+  with no state field at all is still applied.
+- **Upgrading from upstream 0.0.16:** Ethernet/LAN values are now floats
+  (`1000.0`) instead of the XML text (`"1000"`), matching the WiFi interface.
+
+### Fixed
+- An implausible jump in a lifetime counter is only accepted once the
+  confirming readings agree with each other. A run of ever higher corrupt
+  values (50000 -> 70000 -> 90000) no longer counts as confirmation.
+- `today_yield` and `today_time` can no longer go down within the same day; a
+  drop is only accepted once the date has changed.
+
 ## [0.1.3] - 2026-08-18
 
 ### Fixed
