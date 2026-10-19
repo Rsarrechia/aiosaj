@@ -2,15 +2,16 @@
 
 import asyncio
 import csv
-from datetime import date, datetime, timezone
-from io import StringIO
 import logging
 import xml.etree.ElementTree as ET
+from datetime import date, datetime, timezone
+from io import StringIO
 
 import aiohttp
 
 try:
-    from importlib.metadata import PackageNotFoundError, version as _pkg_version
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as _pkg_version
 
     __version__ = _pkg_version("pysaj")
 except (ImportError, PackageNotFoundError):  # pragma: no cover
@@ -312,7 +313,7 @@ def _record_is_consistent(holder, staged):
     return True
 
 
-class Sensor(object):
+class Sensor:
     """Sensor definition"""
 
     def __init__(
@@ -362,7 +363,7 @@ class Sensor(object):
                 self.precision = 0
 
 
-class Sensors(object):
+class Sensors:
     """SAJ sensors"""
 
     def __init__(self, wifi=False):
@@ -535,7 +536,7 @@ class Sensors(object):
         self.__s.append(sensor)
 
 
-class SAJ(object):
+class SAJ:
     """Provides access to SAJ inverter data"""
 
     def __init__(self, host, wifi=False, username="admin", password="admin"):
@@ -548,12 +549,10 @@ class SAJ(object):
         # message the same way the per-sensor ones are.
         self.warn_history = {}
 
-        self.url = "http://{0}/".format(self.host)
+        self.url = f"http://{self.host}/"
         if self.wifi:
             if len(self.username) > 0 and len(self.password) > 0:
-                self.url = "http://{0}:{1}@{2}/".format(
-                    self.username, self.password, self.host
-                )
+                self.url = f"http://{self.username}:{self.password}@{self.host}/"
             self.url_info = self.url + URL_PATH_WIFI_INFO
             self.url += URL_PATH_WIFI
         else:
@@ -597,22 +596,22 @@ class SAJ(object):
         except aiohttp.client_exceptions.ClientResponseError as err:
             # 401 Unauthorized: wrong username/password
             if err.status == 401:
-                raise UnauthorizedException(err)
-            raise UnexpectedResponseException(err)
-        except csv.Error:
+                raise UnauthorizedException(err) from err
+            raise UnexpectedResponseException(err) from err
+        except csv.Error as err:
             # CSV is not valid
             raise UnexpectedResponseException(
                 str.format(
                     "No valid CSV received from {0} at {1}", self.host, current_url
                 )
-            )
-        except ET.ParseError:
+            ) from err
+        except ET.ParseError as err:
             # XML is not valid or even no XML at all
             raise UnexpectedResponseException(
                 str.format(
                     "No valid XML received from {0} at {1}", self.host, current_url
                 )
-            )
+            ) from err
 
     async def _read_info_page(self, session):
         """Read the device info page for the serial number, if it still exists.

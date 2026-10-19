@@ -43,6 +43,9 @@ test = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
 ]
+lint = [
+    "ruff==0.17.1",
+]
 
 [project.urls]
 Homepage = "https://github.com/Rsarrechia/pysaj"
@@ -56,3 +59,10 @@ packages = ["pysaj"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]

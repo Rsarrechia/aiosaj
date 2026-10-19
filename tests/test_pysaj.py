@@ -1,20 +1,20 @@
 import asyncio
-import pytest
-from unittest.mock import MagicMock
 from datetime import date, datetime, timedelta, timezone
+from unittest.mock import MagicMock
+
 import aiohttp
+import pytest
 
 import pysaj
 from pysaj import (
+    MAPPER_STATES,
+    SAJ,
     WARN_INTERVAL_SECONDS,
     Sensor,
     Sensors,
-    SAJ,
-    MAPPER_STATES,
     UnauthorizedException,
     UnexpectedResponseException,
 )
-
 
 # --- minimal aiohttp mock ---------------------------------------------------
 # aioresponses does not track aiohttp's ClientResponse signature (it breaks on
