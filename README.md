@@ -1,5 +1,10 @@
 # aiosaj
 
+[![PyPI](https://img.shields.io/pypi/v/aiosaj)](https://pypi.org/project/aiosaj/)
+[![Python](https://img.shields.io/pypi/pyversions/aiosaj)](https://pypi.org/project/aiosaj/)
+[![tests](https://github.com/Rsarrechia/aiosaj/actions/workflows/tests.yml/badge.svg)](https://github.com/Rsarrechia/aiosaj/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 Async library to read SAJ solar inverters over their Ethernet (`real_time_data.xml`) and
 WiFi (`status/status.php`) interfaces, written for Home Assistant.
 
