@@ -5,16 +5,21 @@
 [![tests](https://github.com/Rsarrechia/aiosaj/actions/workflows/tests.yml/badge.svg)](https://github.com/Rsarrechia/aiosaj/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Async library to read SAJ solar inverters over their Ethernet (`real_time_data.xml`) and
-WiFi (`status/status.php`) interfaces, written for Home Assistant.
+Async Python library to read live data from SAJ solar inverters, over either their
+Ethernet (LAN) interface or their WiFi module. It was written for Home Assistant but
+works in any asyncio application.
 
-aiosaj continues [fredericvl/pysaj](https://github.com/fredericvl/pysaj), which was based
-on the pysma component written by @kellerza. It is published under a new name and
-imported as `aiosaj`, so it can be installed next to the original `pysaj`.
+aiosaj continues the work of [fredericvl/pysaj](https://github.com/fredericvl/pysaj).
+
+## Installation
 
 ```
 pip install aiosaj
 ```
+
+Requires Python 3.9 or newer.
+
+## Usage
 
 ```python
 import asyncio
@@ -23,102 +28,99 @@ from aiosaj import SAJ, Sensors
 
 
 async def main():
+    # WiFi module: wifi=True, with the module's web login (admin/admin by default).
+    # Ethernet: SAJ("192.168.1.100") - no login needed.
+    saj = SAJ("192.168.1.100", wifi=True, username="admin", password="admin")
     sensors = Sensors(wifi=True)
-    saj = SAJ("192.168.1.100", wifi=True)
+
     if await saj.read(sensors):
-        print(sensors["current_power"].value, sensors["total_yield"].value)
+        for sensor in sensors:
+            if sensor.enabled:
+                print(sensor.name, sensor.value, sensor.unit)
+    else:
+        print("Inverter not reachable (it switches off when there is no sunlight)")
 
 
 asyncio.run(main())
 ```
 
-Migrating from `pysaj`: install `aiosaj` and change `import pysaj` / `from pysaj import ...`
-to `aiosaj`. The API is otherwise the same as pysaj 0.1.x; see [CHANGELOG.md](CHANGELOG.md)
-for what differs from upstream 0.0.16.
+- `read()` returns `True` when new values were read, and `False` when the inverter
+  cannot be reached. SAJ inverters run on solar power, so this is normal at night.
+- A wrong username or password raises `UnauthorizedException`. A response that is not
+  inverter data raises `UnexpectedResponseException`.
+- `sensors["total_yield"]` looks up a single sensor by name.
+- `sensor.enabled` is `True` for every sensor your inverter actually reports. Sensors
+  for channels your inverter does not have, such as a third PV string, stay disabled.
+- `saj.serialnumber` holds the inverter's serial number after the first read, if the
+  inverter's firmware provides it.
+
+Use `Sensors(wifi=True)` together with `SAJ(..., wifi=True)`, and `Sensors()` with an
+Ethernet connection.
 
 ## Sensors
 
-`Sensors(wifi=True)` reads the WiFi module's `status/status.php`; `Sensors(wifi=False)`
-reads the ethernet interface's `real_time_data.xml`. A sensor is only reported as
-`enabled` once the inverter has actually returned a value for it, so channels a
-particular inverter does not have (a third PV string, unused string currents) never
-show up.
+### Both interfaces
 
-| Sensor | Unit | Interface |
+| Sensor | Unit | Description |
 | --- | --- | --- |
-| `current_power` | W | both |
-| `today_yield`, `total_yield` | kWh | both |
-| `today_time`, `total_time` | h | both |
-| `total_co2_reduced` | kg | both |
-| `temperature` | °C | both |
-| `state` | | both |
-| `today_max_current` | W | ethernet |
-| `pv1_voltage` … `pv3_voltage` | V | WiFi ✓ · LAN pending¹ |
-| `pv1_current` … `pv3_current` | A | WiFi ✓ · LAN pending¹ |
-| `pv1_string1_current` … `pv3_string4_current` | A | WiFi ✓ · LAN pending¹ |
-| `grid_frequency` | Hz | WiFi ✓ · LAN pending¹ |
-| `line1_voltage` … `line3_voltage` | V | WiFi ✓ · LAN pending¹ |
-| `line1_current` … `line3_current` | A | WiFi ✓ · LAN pending¹ |
-| `bus_voltage` | V | WiFi ✓ · LAN pending¹ |
+| `current_power` | W | Power being delivered right now |
+| `today_yield` | kWh | Energy produced today |
+| `total_yield` | kWh | Energy produced over the inverter's lifetime |
+| `today_time` | h | Hours in operation today |
+| `total_time` | h | Hours in operation over the inverter's lifetime |
+| `total_co2_reduced` | kg | Lifetime CO₂ saving, as calculated by the inverter |
+| `temperature` | °C | Inverter temperature |
+| `state` | | Run state: `Normal`, `Waiting`, `Not connected`, `Error` or `Upgrading` |
 
-¹ These values are **not WiFi-exclusive** — the inverter measures them regardless of
-how you connect. They are currently wired up and verified only for the WiFi interface,
-where field positions, scaling and units come from the module's own `status.html`
-(its `cf` array) and `/i18n/en/status.xml` (its `u<N>` entries). The ethernet/LAN
-interface exposes the same values in `real_time_data.xml`, under different tag names.
+### Ethernet only
 
-Two independently posted `real_time_data.xml` dumps (see [Sources](#sources)) agree on
-these, so they are the tags LAN support should use:
+| Sensor | Unit | Description |
+| --- | --- | --- |
+| `today_max_current` | W | Highest power output reached today |
 
-| Sensor | LAN tag |
-| --- | --- |
-| `pv1_voltage` … `pv3_voltage` | `v-pv1`, `v-pv2`, `v-pv3` |
-| `pv1_string1_current` … `pv3_string4_current` | `i-pv11` … `i-pv34` |
-| `bus_voltage` | `v-bus` |
-| `line1_voltage` … `line3_voltage` | `Vac_l1`, `Vac_l2`, `Vac_l3` |
-| `line1_current` … `line3_current` | `Iac_l1`, `Iac_l2`, `Iac_l3` |
-| `grid_frequency` | `Freq1`, and `Freq2` / `Freq3` per further phase |
+### WiFi only
 
-`pv1_current` … `pv3_current` have no LAN counterpart: the XML reports string currents
-only. The LAN interface also carries per-phase power (`pac1`, `pac2`, `pac3`) that the
-WiFi record does not.
+| Sensor | Unit | Description |
+| --- | --- | --- |
+| `pv1_voltage`, `pv2_voltage`, `pv3_voltage` | V | Voltage of each PV input |
+| `pv1_current`, `pv2_current`, `pv3_current` | A | Current of each PV input |
+| `pv1_string1_current` … `pv3_string4_current` | A | Current of each string on each PV input |
+| `grid_frequency` | Hz | Grid frequency |
+| `line1_voltage`, `line2_voltage`, `line3_voltage` | V | Grid voltage per phase |
+| `line1_current`, `line2_current`, `line3_current` | A | Grid current per phase |
+| `bus_voltage` | V | Internal DC bus voltage |
 
-Those tag names come from public dumps rather than from an inverter this library has
-been run against, so they are deliberately not wired up yet - a sensor reading a guessed
-tag that turns out to be wrong would be worse than one that stays disabled. If you have
-a LAN-connected SAJ inverter, `curl http://<inverter>/real_time_data.xml` and open an
-issue with the output; confirming the tags is all that is left to do.
+Older WiFi module firmware only reports the sensors that both interfaces have.
 
-## Sources
+## How values behave
 
-The LAN tag names in ¹ above are taken from these publicly posted
-`real_time_data.xml` dumps, which agree with each other:
+- Values are only updated while the inverter's state is `Normal`. While it is starting
+  up, waiting or in error, live values such as power and voltage become `None`, and
+  the energy and time counters keep their last value.
+- `total_yield`, `total_time` and `total_co2_reduced` never go down, and `today_yield`
+  and `today_time` only go back to zero when a new day starts. This keeps energy
+  statistics, such as Home Assistant's Energy dashboard, free of false spikes.
+- A reading that is out of range or clearly wrong is skipped, and the sensor keeps
+  its previous value.
 
-* <https://forum.domoticz.com/viewtopic.php?t=30154>
-* <https://community.openhab.org/t/read-networkbinding-xml-file-from-saj-suntrino-inverter/105690>
+## Migrating from pysaj
 
-## Validation
+The API is the same as pysaj. Install `aiosaj` and change your imports:
 
-The WiFi module returns malformed records - truncated bodies, wait markers, zeroed
-registers while it is starting up. Its own web UI throws these away
-(`if(35!=s.length){return;}`); this library does the same, because a partial record
-otherwise yields plausible looking numbers read from the wrong field positions.
+```python
+# before
+from pysaj import SAJ, Sensors
+# after
+from aiosaj import SAJ, Sensors
+```
 
-A record is only applied when:
+See [CHANGELOG.md](CHANGELOG.md) for everything that changed since pysaj 0.0.16.
 
-* it is a single line whose field count matches a known layout (35, or 23 for older
-  firmware),
-* the daily counters do not exceed their lifetime counters,
-* each reading falls inside that sensor's plausible range.
+## Credits
 
-`65535` is the module's not-available sentinel and never becomes a reading.
+aiosaj builds on [pysaj](https://github.com/fredericvl/pysaj) by @fredericvl, which was
+in turn based on the pysma library by @kellerza.
 
-Readings taken while the inverter's run state is not `Normal` (waking up, waiting,
-error) are not trusted: live values become `None` and the counters keep their last
-known value.
+## License
 
-Lifetime counters (`total_yield`, `total_time`, `total_co2_reduced`) may never
-decrease. Home Assistant reads them as `total_increasing`, so a single low sample is
-taken as a meter reset and the whole counter is then booked as fresh production.
-Implausibly large forward jumps are held until several consecutive readings agree, so
-a corrupt high value cannot become the new baseline either.
+MIT, see [LICENSE](LICENSE).
