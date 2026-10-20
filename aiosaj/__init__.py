@@ -1,6 +1,7 @@
 """PySAJ interacts as a library to communicate with SAJ inverters"""
 
 import asyncio
+import base64
 import csv
 import logging
 import xml.etree.ElementTree as ET
@@ -57,9 +58,12 @@ _ABSENT = object()
 # status.php returns exactly one record whose field count identifies the
 # layout. The module's own status.html refuses anything that is not 35 fields
 # ("if(35!=s.length){return;}"); the 23 field layout is the older firmware the
-# csv_1_key indices were written for. Anything else is a malformed record and
-# is thrown away instead of being indexed into.
+# csv_1_key indices were written for. A longer record is read as the 35 field
+# layout, on the assumption that newer firmware appends fields rather than
+# moving them. Anything shorter than 35 fields that is not 23 is how a
+# truncated record looks, so it is thrown away instead of being indexed into.
 WIFI_LAYOUTS = {35: "csv_2_key", 23: "csv_1_key"}
+WIFI_LAYOUT_LATEST = 35
 
 # A cumulative counter may not grow faster than max_rate units per hour. Never
 # allow less than this much elapsed time, so that a fast poll cycle does not
@@ -78,6 +82,12 @@ CONSISTENCY_TOLERANCE = 1.0
 # A rejected counter usually repeats on every poll, so only warn about it
 # occasionally and report how many were suppressed in between.
 WARN_INTERVAL_SECONDS = 300
+
+
+def _basic_auth(username, password):
+    """HTTP Basic credentials, encoded the way aiohttp.BasicAuth does it."""
+    token = base64.b64encode(f"{username}:{password}".encode("latin1"))
+    return "Basic " + token.decode("ascii")
 
 
 def _apply_factor(num, factor):
@@ -548,11 +558,16 @@ class SAJ:
         # Throttle state for warnings about the record as a whole, keyed on the
         # message the same way the per-sensor ones are.
         self.warn_history = {}
+        self.warned_long_record = False
 
+        # Credentials go in an Authorization header rather than the URL, which
+        # would otherwise end up in every log message that names it. Built by
+        # hand because aiohttp.BasicAuth is deprecated in newer aiohttp.
+        self.headers = {}
         self.url = f"http://{self.host}/"
         if self.wifi:
             if len(self.username) > 0 and len(self.password) > 0:
-                self.url = f"http://{self.username}:{self.password}@{self.host}/"
+                self.headers["Authorization"] = _basic_auth(self.username, self.password)
             self.url_info = self.url + URL_PATH_WIFI_INFO
             self.url += URL_PATH_WIFI
         else:
@@ -565,7 +580,7 @@ class SAJ:
         try:
             timeout = aiohttp.ClientTimeout(total=5)
             async with aiohttp.ClientSession(
-                timeout=timeout, raise_for_status=True
+                timeout=timeout, headers=self.headers, raise_for_status=True
             ) as session:
                 if self.serialnumber == UNKNOWN_SERIAL:
                     current_url = self.url_info
@@ -683,6 +698,20 @@ class SAJ:
             return None
 
         values = [field.strip() for field in rows[0]]
+        if len(values) > WIFI_LAYOUT_LATEST:
+            # Not a fault, so said once rather than on every poll.
+            if not self.warned_long_record:
+                _LOGGER.warning(
+                    "Status record has %s fields, more than the %s this library "
+                    "knows. Reading the first %s and ignoring the rest: %r",
+                    len(values),
+                    WIFI_LAYOUT_LATEST,
+                    WIFI_LAYOUT_LATEST,
+                    data,
+                )
+                self.warned_long_record = True
+            return values[:WIFI_LAYOUT_LATEST]
+
         if len(values) not in WIFI_LAYOUTS:
             _warn_throttled(
                 self,

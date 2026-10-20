@@ -219,13 +219,19 @@ class TestSAJ:
     def test_init_wifi(self):
         saj = SAJ("192.168.1.100", wifi=True, username="user", password="pass")
         assert saj.wifi is True
-        assert saj.url == "http://user:pass@192.168.1.100/status/status.php"
-        assert saj.url_info == "http://user:pass@192.168.1.100/info.php"
+        assert saj.url == "http://192.168.1.100/status/status.php"
+        assert saj.url_info == "http://192.168.1.100/info.php"
+        assert saj.headers == {"Authorization": "Basic dXNlcjpwYXNz"}
 
     def test_init_wifi_no_creds(self):
         saj = SAJ("192.168.1.100", wifi=True, username="", password="")
         assert saj.url == "http://192.168.1.100/status/status.php"
         assert saj.url_info == "http://192.168.1.100/info.php"
+        assert saj.headers == {}
+
+    def test_init_ethernet_ignores_creds(self):
+        saj = SAJ("192.168.1.100", wifi=False, username="user", password="pass")
+        assert saj.headers == {}
 
     @pytest.mark.asyncio
     async def test_read_ethernet_success(self, monkeypatch):
@@ -357,6 +363,28 @@ class TestSAJ:
         assert sensors["current_power"].value == 38.0
 
     @pytest.mark.asyncio
+    async def test_credentials_are_not_logged(self, monkeypatch, caplog):
+        saj = SAJ("192.168.1.100", wifi=True, username="admin", password="s3cret")
+        sensors = Sensors(wifi=True)
+        sessions = []
+        install_fake_http(monkeypatch, {
+            saj.url_info: ("", 404),
+            saj.url: (WIFI_RECORD, 200),
+        })
+        fake_session = aiosaj.aiohttp.ClientSession
+
+        def recording_session(*args, **kwargs):
+            sessions.append(kwargs)
+            return fake_session(*args, **kwargs)
+
+        monkeypatch.setattr(aiosaj.aiohttp, "ClientSession", recording_session)
+
+        assert await saj.read(sensors) is True
+        assert sessions[0]["headers"] == {"Authorization": "Basic YWRtaW46czNjcmV0"}
+        assert "Could not read http://192.168.1.100/info.php" in caplog.text
+        assert "s3cret" not in caplog.text
+
+    @pytest.mark.asyncio
     async def test_info_page_is_read_once(self, monkeypatch):
         saj = SAJ("192.168.1.100", wifi=False)
         sensors = Sensors(wifi=False)
@@ -486,7 +514,7 @@ class TestRecordGuards:
             "3,17",  # truncated mid number
             "w",  # the module's wait marker
             "3,1758433,121794,1165,82",  # partial record
-            WIFI_RECORD + ",99",  # unexpected extra field
+            WIFI_RECORD.rsplit(",", 1)[0],  # 34 fields: one short of the layout
         ],
     )
     def test_malformed_record_is_discarded(self, body):
@@ -502,6 +530,22 @@ class TestRecordGuards:
 
         assert saj._read_wifi("w\n" + WIFI_RECORD, sensors) is False
         assert sensors["total_yield"].value == before
+
+    def test_longer_record_is_read_as_the_35_field_layout(self, caplog):
+        saj = SAJ("192.168.1.100", wifi=True)
+        sensors = Sensors(wifi=True)
+        longer = WIFI_RECORD + ",99,100"
+
+        assert saj._read_wifi(longer, sensors) is True
+        assert sensors["total_yield"].value == 17584.33
+        assert sensors["current_power"].value == 185.0
+        assert sensors["bus_voltage"].value == 620.5
+        assert sensors["state"].value == "Normal"
+        assert caplog.text.count("more than the 35") == 1
+
+        # Said once, not on every poll.
+        assert saj._read_wifi(longer, sensors) is True
+        assert caplog.text.count("more than the 35") == 1
 
     def test_old_23_field_layout_still_reads(self):
         saj = SAJ("192.168.1.100", wifi=True)
