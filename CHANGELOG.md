@@ -4,6 +4,19 @@ All notable changes to aiosaj (formerly the maintained pysaj fork) are
 documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.2] - 2026-10-19
+
+### Fixed
+- WiFi credentials are sent as an `Authorization` header instead of being
+  embedded in the URL, so they no longer show up in log messages such as
+  `Could not read http://admin:...@host/info.php`. `SAJ.url` and
+  `SAJ.url_info` no longer contain the username and password.
+- A WiFi status record with more than 35 fields is read as the 35 field
+  layout, with the extra trailing fields ignored, instead of being discarded on
+  every poll. A one-time warning names the field count. Records shorter than 35
+  fields other than the 23 field layout are still discarded, since that is what
+  a truncated record looks like.
+
 ## [0.2.1] - 2026-10-19
 
 ### Changed
